@@ -1,0 +1,27 @@
+{
+  "name": "style-forge",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "node --watch server/index.js",
+    "dev:client": "vite",
+    "build": "vite build"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^1.4.5-lts.2",
+    "replicate": "^1.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "archiver": "^7.0.1"
+  },
+  "devDependencies": {
+    "vite": "^6.3.0",
+    "@vitejs/plugin-react": "^4.4.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "concurrently": "^9.1.0"
+  }
+}

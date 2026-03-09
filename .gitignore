@@ -1,0 +1,21 @@
+node_modules
+dist
+.env
+.DS_Store
+uploads/*
+!uploads/.gitkeep
+
+# Test/experiment images and model weights
+*.png
+*.jpg
+*.jpeg
+*.safetensors
+*.tar
+*.log
+compare.html
+train_and_test.sh
+train_monitor.log
+v2_training_log.txt
+
+# Runtime data (contains API URLs and user data)
+projects.json
