@@ -248,9 +248,13 @@ app.post("/api/projects/:projectId/train", async (req, res) => {
   // ─── Background: zip originals → upload → train ───
   (async () => {
     try {
-      console.log(`[BG] Zipping ${project.images.length} training images...`);
+      // Cap at 50 images for LoRA training (more isn't better, and avoids upload size limits)
+      const MAX_TRAIN_IMAGES = 50;
+      const trainingImages = project.images.length > MAX_TRAIN_IMAGES
+        ? project.images.slice(0, MAX_TRAIN_IMAGES)
+        : project.images;
+      console.log(`[BG] Zipping ${trainingImages.length} training images (of ${project.images.length} total)...`);
 
-      // Create zip directly from original images (skip text removal to save cost/time)
       const zipPath = path.join(__dirname, "../uploads", project.id, "training_data.zip");
       await new Promise((resolve, reject) => {
         const output = fs.createWriteStream(zipPath);
@@ -258,15 +262,34 @@ app.post("/api/projects/:projectId/train", async (req, res) => {
         output.on("close", resolve);
         archive.on("error", reject);
         archive.pipe(output);
-        for (const img of project.images) {
+        for (const img of trainingImages) {
           const imgPath = path.join(__dirname, "../uploads", project.id, img.filename);
           archive.file(imgPath, { name: img.filename });
         }
         archive.finalize();
       });
 
-      const zipBuffer = fs.readFileSync(zipPath);
-      const zipBase64 = `data:application/zip;base64,${zipBuffer.toString("base64")}`;
+      const zipStats = fs.statSync(zipPath);
+      console.log(`[BG] ZIP size: ${(zipStats.size / 1024 / 1024).toFixed(1)}MB`);
+
+      let zipInput;
+      if (zipStats.size > 90 * 1024 * 1024) {
+        // Over 90MB — use Replicate file upload API
+        console.log(`[BG] Large ZIP, uploading via Replicate files API...`);
+        const zipBuffer = fs.readFileSync(zipPath);
+        const zipBlob = new Blob([zipBuffer], { type: "application/zip" });
+        const fileResponse = await replicate.files.create(zipBlob, {
+          content_type: "application/zip",
+          filename: "training_data.zip",
+        });
+        zipInput = fileResponse.urls.get;
+        console.log(`[BG] Uploaded: ${zipInput}`);
+      } else {
+        // Under 90MB — inline as base64 data URI (simpler, no extra API call)
+        console.log(`[BG] Small ZIP, using inline base64...`);
+        const zipBuffer = fs.readFileSync(zipPath);
+        zipInput = `data:application/zip;base64,${zipBuffer.toString("base64")}`;
+      }
 
       // Create model on Replicate
       const modelOwner = "sett";
@@ -289,7 +312,7 @@ app.post("/api/projects/:projectId/train", async (req, res) => {
         trainerConfig.version,
         {
           destination: `${modelOwner}/${modelName}`,
-          input: trainerConfig.getInput(zipBase64, project.triggerWord),
+          input: trainerConfig.getInput(zipInput, project.triggerWord),
         }
       );
       console.log(`[BG] Training started: ${training.id}`);
