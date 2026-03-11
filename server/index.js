@@ -671,7 +671,7 @@ app.post("/api/projects/:projectId/generate", async (req, res) => {
 
 // In production, serve frontend for all non-API routes (SPA fallback)
 if (fs.existsSync(distPath)) {
-  app.get("*", (req, res) => {
+  app.get("/{*splat}", (req, res) => {
     res.sendFile(path.join(distPath, "index.html"));
   });
 }
