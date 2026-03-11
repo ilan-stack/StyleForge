@@ -1,39 +1,46 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as api from "./api.js";
 
-// ─── Prompt Templates & Scene Builder Data ──────────
+// ─── Quick-Generate Chips (one-tap political cartoons) ─────
+const QUICK_PROMPTS = [
+  { label: "Trump at podium", icon: "🎤" },
+  { label: "Biden sitting at desk", icon: "🪑" },
+  { label: "Obama giving speech", icon: "🗣" },
+  { label: "Netanyahu in meeting", icon: "🤝" },
+  { label: "Putin at table", icon: "🏛" },
+  { label: "Zelensky with flag", icon: "🇺🇦" },
+  { label: "Trump and Biden debate", icon: "⚡" },
+  { label: "Congress in session", icon: "🏛" },
+];
 
+// ─── Prompt Templates & Scene Builder Data ──────────
 const SCENE_TEMPLATES = [
-  { label: "Portrait", icon: "P", desc: "A single person or face", prompt: "portrait of a person" },
-  { label: "Two People", icon: "2P", desc: "Two people together", prompt: "two people standing together" },
-  { label: "Landscape", icon: "L", desc: "A natural scene", prompt: "a beautiful landscape" },
-  { label: "Street Scene", icon: "S", desc: "People in a city or town", prompt: "a street scene with people walking" },
-  { label: "Indoor Scene", icon: "I", desc: "Inside a room or building", prompt: "an indoor scene" },
-  { label: "Animals", icon: "A", desc: "An animal or pet", prompt: "an animal" },
-  { label: "Still Life", icon: "SL", desc: "Objects on a table", prompt: "a still life arrangement of objects" },
-  { label: "Free Write", icon: "...", desc: "Describe anything you want", prompt: "" },
+  { label: "One Person", icon: "👤", desc: "A single person or face", prompt: "portrait of a person" },
+  { label: "Two People", icon: "👥", desc: "Two people together", prompt: "two people standing together" },
+  { label: "Scene", icon: "🌆", desc: "A place or landscape", prompt: "a scene" },
+  { label: "Animals", icon: "🐾", desc: "An animal or pet", prompt: "an animal" },
+  { label: "Objects", icon: "🎨", desc: "Things on a table", prompt: "a still life arrangement" },
+  { label: "Free Write", icon: "✏️", desc: "Type anything you want", prompt: "" },
 ];
 
 const MOODS = [
-  { label: "Happy", value: "happy, cheerful, warm lighting" },
-  { label: "Calm", value: "calm, peaceful, serene" },
-  { label: "Dramatic", value: "dramatic, intense, bold" },
-  { label: "Mysterious", value: "mysterious, moody, shadows" },
-  { label: "Playful", value: "playful, fun, colorful" },
-  { label: "Sad", value: "melancholic, somber, quiet" },
+  { label: "😊 Happy", value: "happy, cheerful, warm lighting" },
+  { label: "😌 Calm", value: "calm, peaceful, serene" },
+  { label: "🎭 Dramatic", value: "dramatic, intense, bold" },
+  { label: "🌙 Mysterious", value: "mysterious, moody, shadows" },
+  { label: "🎪 Playful", value: "playful, fun, colorful" },
+  { label: "😢 Sad", value: "melancholic, somber, quiet" },
 ];
 
 const SETTINGS = [
-  { label: "Outdoors", value: "outdoors, natural setting" },
-  { label: "City", value: "in a city, urban environment" },
-  { label: "Home", value: "in a cozy home interior" },
-  { label: "Nature", value: "surrounded by nature, trees and flowers" },
-  { label: "Beach", value: "at the beach, ocean waves" },
-  { label: "Studio", value: "plain background, studio setting" },
+  { label: "🌳 Outdoors", value: "outdoors, natural setting" },
+  { label: "🏙 City", value: "in a city, urban environment" },
+  { label: "🏠 Home", value: "in a cozy home interior" },
+  { label: "🌊 Beach", value: "at the beach, ocean waves" },
+  { label: "🎬 Studio", value: "plain background, studio setting" },
 ];
 
 // ─── Styles ──────────────────────────────────────────
-
 const globalStyles = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -46,9 +53,49 @@ const globalStyles = `
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+  }
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(124, 58, 237, 0.4); }
+    50% { box-shadow: 0 0 0 12px rgba(124, 58, 237, 0); }
+  }
+
+  .fade-in { animation: fadeIn 0.4s ease-out; }
+
+  /* Lightbox overlay */
+  .lightbox-overlay {
+    position: fixed; inset: 0; z-index: 1000;
+    background: rgba(0,0,0,0.92);
+    display: flex; align-items: center; justify-content: center;
+    cursor: zoom-out;
+    animation: fadeIn 0.2s ease-out;
+  }
+  .lightbox-overlay img {
+    max-width: 90vw; max-height: 90vh;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    background: linear-gradient(90deg, #1a1a2e 25%, #252540 50%, #1a1a2e 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+    border-radius: 12px;
   }
 `;
 
@@ -62,80 +109,90 @@ const css = {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 40,
+    marginBottom: 32,
     paddingBottom: 20,
     borderBottom: "1px solid #1a1a2e",
   },
   logo: {
-    fontSize: 28,
-    fontWeight: 700,
-    background: "linear-gradient(135deg, #7c3aed, #c084fc)",
+    fontSize: 32,
+    fontWeight: 800,
+    background: "linear-gradient(135deg, #7c3aed, #c084fc, #e879f9)",
     WebkitBackgroundClip: "text",
     WebkitTextFillColor: "transparent",
     cursor: "pointer",
+    letterSpacing: "-0.5px",
   },
   btn: {
-    padding: "10px 20px",
-    borderRadius: 10,
+    padding: "14px 24px",
+    borderRadius: 14,
     border: "none",
     fontWeight: 600,
-    fontSize: 14,
+    fontSize: 16,
     cursor: "pointer",
     transition: "all 0.2s",
     fontFamily: "inherit",
+    minHeight: 48,
   },
   btnPrimary: {
     background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
     color: "#fff",
   },
   btnSecondary: {
-    background: "#1a1a2e",
+    background: "rgba(124, 58, 237, 0.1)",
     color: "#c084fc",
-    border: "1px solid #2a2a4e",
+    border: "1px solid rgba(124, 58, 237, 0.3)",
+    backdropFilter: "blur(10px)",
   },
   btnDanger: {
-    background: "#1a1a2e",
+    background: "rgba(248, 113, 113, 0.1)",
     color: "#f87171",
-    border: "1px solid #2a1a1a",
+    border: "1px solid rgba(248, 113, 113, 0.2)",
   },
+  // Glassmorphic card
   card: {
-    background: "#12121e",
-    borderRadius: 16,
-    border: "1px solid #1a1a2e",
-    padding: 24,
-    marginBottom: 16,
+    background: "rgba(18, 18, 30, 0.7)",
+    backdropFilter: "blur(20px)",
+    borderRadius: 20,
+    border: "1px solid rgba(124, 58, 237, 0.15)",
+    padding: 28,
+    marginBottom: 20,
+    transition: "all 0.3s",
   },
   input: {
     width: "100%",
-    padding: "12px 16px",
-    borderRadius: 10,
-    border: "1px solid #2a2a4e",
-    background: "#0a0a14",
+    padding: "16px 20px",
+    borderRadius: 14,
+    border: "1px solid rgba(124, 58, 237, 0.2)",
+    background: "rgba(10, 10, 20, 0.6)",
     color: "#e0e0e8",
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: "inherit",
     outline: "none",
+    minHeight: 52,
+    transition: "border-color 0.2s",
   },
   textarea: {
     width: "100%",
-    padding: "12px 16px",
-    borderRadius: 10,
-    border: "1px solid #2a2a4e",
-    background: "#0a0a14",
+    padding: "16px 20px",
+    borderRadius: 14,
+    border: "1px solid rgba(124, 58, 237, 0.2)",
+    background: "rgba(10, 10, 20, 0.6)",
     color: "#e0e0e8",
-    fontSize: 15,
+    fontSize: 17,
     fontFamily: "inherit",
     outline: "none",
     resize: "vertical",
-    minHeight: 80,
+    minHeight: 100,
+    transition: "border-color 0.2s",
   },
   badge: {
     display: "inline-block",
-    padding: "4px 10px",
-    borderRadius: 6,
-    fontSize: 12,
+    padding: "6px 14px",
+    borderRadius: 10,
+    fontSize: 13,
     fontWeight: 600,
     textTransform: "uppercase",
+    letterSpacing: "0.5px",
   },
   imageGrid: {
     display: "grid",
@@ -147,77 +204,230 @@ const css = {
     width: "100%",
     aspectRatio: "1",
     objectFit: "cover",
-    borderRadius: 10,
-    border: "2px solid #1a1a2e",
+    borderRadius: 12,
+    border: "2px solid rgba(124, 58, 237, 0.15)",
+    cursor: "pointer",
+    transition: "transform 0.2s, border-color 0.2s",
   },
   genGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
-    gap: 16,
+    gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+    gap: 20,
     marginTop: 20,
   },
   genImage: {
     width: "100%",
-    borderRadius: 12,
-    border: "1px solid #1a1a2e",
+    borderRadius: 16,
+    border: "1px solid rgba(124, 58, 237, 0.15)",
+    cursor: "pointer",
+    transition: "transform 0.2s",
   },
   dropZone: (isDragging) => ({
-    border: `2px dashed ${isDragging ? "#7c3aed" : "#2a2a4e"}`,
-    borderRadius: 16,
-    padding: 48,
+    border: `2px dashed ${isDragging ? "#7c3aed" : "rgba(124, 58, 237, 0.3)"}`,
+    borderRadius: 20,
+    padding: 56,
     textAlign: "center",
     cursor: "pointer",
-    transition: "all 0.2s",
-    background: isDragging ? "#7c3aed11" : "transparent",
+    transition: "all 0.3s",
+    background: isDragging ? "rgba(124, 58, 237, 0.08)" : "transparent",
+    minHeight: 180,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
   }),
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 600,
+    fontSize: 20,
+    fontWeight: 700,
     marginBottom: 12,
-    color: "#c8c8d8",
+    color: "#e0e0e8",
   },
   label: {
     display: "block",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: 500,
-    color: "#888",
-    marginBottom: 6,
+    color: "#999",
+    marginBottom: 8,
   },
   progressBar: {
-    height: 4,
-    borderRadius: 2,
-    background: "#1a1a2e",
+    height: 6,
+    borderRadius: 3,
+    background: "rgba(124, 58, 237, 0.15)",
     overflow: "hidden",
-    marginTop: 12,
+    marginTop: 16,
   },
   progressFill: (pct) => ({
     height: "100%",
     width: `${pct}%`,
-    background: "linear-gradient(90deg, #7c3aed, #c084fc)",
+    background: "linear-gradient(90deg, #7c3aed, #c084fc, #e879f9)",
     transition: "width 0.5s ease",
+    borderRadius: 3,
   }),
 };
 
-// ─── StatusBadge ─────────────────────────────────────
+// ─── Lightbox ────────────────────────────────────────
+function Lightbox({ src, alt, onClose }) {
+  useEffect(() => {
+    const handleKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
 
+  return (
+    <div className="lightbox-overlay" onClick={onClose}>
+      <img src={src} alt={alt || ""} onClick={(e) => e.stopPropagation()} />
+    </div>
+  );
+}
+
+// ─── Loading Spinner ─────────────────────────────────
+function Spinner({ size = 40, color = "#7c3aed" }) {
+  return (
+    <div style={{
+      width: size, height: size,
+      border: `3px solid rgba(124, 58, 237, 0.15)`,
+      borderTopColor: color,
+      borderRadius: "50%",
+      animation: "spin 0.8s linear infinite",
+      margin: "0 auto",
+    }} />
+  );
+}
+
+// ─── Skeleton Loader ─────────────────────────────────
+function SkeletonCard() {
+  return (
+    <div style={{ ...css.card, padding: 0, overflow: "hidden" }}>
+      <div className="skeleton" style={{ height: 80 }} />
+    </div>
+  );
+}
+
+// ─── StatusBadge ─────────────────────────────────────
 function StatusBadge({ status }) {
   const colors = {
-    not_started: { bg: "#1a1a2e", color: "#666" },
-    starting: { bg: "#1a1a2e", color: "#facc15" },
-    processing: { bg: "#1a1a2e", color: "#38bdf8" },
-    succeeded: { bg: "#052e16", color: "#4ade80" },
-    failed: { bg: "#2a1a1a", color: "#f87171" },
+    not_started: { bg: "rgba(26, 26, 46, 0.8)", color: "#666" },
+    starting: { bg: "rgba(250, 204, 21, 0.1)", color: "#facc15" },
+    processing: { bg: "rgba(56, 189, 248, 0.1)", color: "#38bdf8" },
+    succeeded: { bg: "rgba(74, 222, 128, 0.1)", color: "#4ade80" },
+    failed: { bg: "rgba(248, 113, 113, 0.1)", color: "#f87171" },
   };
   const c = colors[status] || colors.not_started;
+  const labels = {
+    not_started: "Not trained",
+    starting: "Starting...",
+    processing: "Training...",
+    succeeded: "Ready",
+    failed: "Failed",
+  };
   return (
     <span style={{ ...css.badge, background: c.bg, color: c.color }}>
-      {status === "processing" ? "Training..." : status?.replace("_", " ")}
+      {labels[status] || status?.replace("_", " ")}
     </span>
   );
 }
 
-// ─── ProjectList ─────────────────────────────────────
+// ─── Step Indicator ──────────────────────────────────
+function StepIndicator({ steps, current }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 0, marginBottom: 28 }}>
+      {steps.map((step, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", flex: i < steps.length - 1 ? 1 : "none" }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: "50%",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 16, fontWeight: 700,
+            background: i <= current
+              ? "linear-gradient(135deg, #7c3aed, #6d28d9)"
+              : "rgba(26, 26, 46, 0.8)",
+            color: i <= current ? "#fff" : "#555",
+            transition: "all 0.3s",
+            flexShrink: 0,
+          }}>
+            {i < current ? "✓" : i + 1}
+          </div>
+          <span style={{
+            fontSize: 14, fontWeight: 600, marginLeft: 10,
+            color: i <= current ? "#c084fc" : "#555",
+            whiteSpace: "nowrap",
+          }}>
+            {step}
+          </span>
+          {i < steps.length - 1 && (
+            <div style={{
+              flex: 1, height: 2, marginLeft: 12, marginRight: 12,
+              background: i < current
+                ? "linear-gradient(90deg, #7c3aed, #c084fc)"
+                : "rgba(124, 58, 237, 0.15)",
+              borderRadius: 1,
+              transition: "all 0.3s",
+            }} />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
+// ─── Hero Section ────────────────────────────────────
+function Hero({ onGetStarted, hasProjects }) {
+  return (
+    <div className="fade-in" style={{
+      textAlign: "center",
+      padding: "48px 24px",
+      marginBottom: 32,
+      background: "radial-gradient(ellipse at top, rgba(124, 58, 237, 0.12) 0%, transparent 70%)",
+      borderRadius: 28,
+      border: "1px solid rgba(124, 58, 237, 0.1)",
+    }}>
+      <h1 style={{
+        fontSize: 44,
+        fontWeight: 800,
+        marginBottom: 16,
+        background: "linear-gradient(135deg, #c084fc, #e879f9, #7c3aed)",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        lineHeight: 1.2,
+      }}>
+        Create Art with Your Voice
+      </h1>
+      <p style={{
+        fontSize: 20,
+        color: "#999",
+        maxWidth: 560,
+        margin: "0 auto 12px",
+        lineHeight: 1.6,
+      }}>
+        Say or type a simple description and get a beautiful editorial cartoon in your own style.
+      </p>
+      <p style={{
+        fontSize: 15,
+        color: "#666",
+        marginBottom: 32,
+      }}>
+        Designed for everyone. Big buttons, voice input, simple steps.
+      </p>
+      {!hasProjects && (
+        <button
+          style={{
+            ...css.btn,
+            ...css.btnPrimary,
+            padding: "18px 40px",
+            fontSize: 20,
+            fontWeight: 700,
+            borderRadius: 18,
+            animation: "breathe 2s infinite",
+          }}
+          onClick={onGetStarted}
+        >
+          Get Started
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── ProjectList ─────────────────────────────────────
 function ProjectList({ onSelect, onCreate }) {
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -236,64 +446,76 @@ function ProjectList({ onSelect, onCreate }) {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
   };
 
-  if (loading) return <p style={{ color: "#666" }}>Loading...</p>;
-
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 600 }}>Your Style Projects</h2>
-        <button style={{ ...css.btn, ...css.btnPrimary }} onClick={onCreate}>
-          + New Project
-        </button>
-      </div>
+      <Hero onGetStarted={onCreate} hasProjects={projects.length > 0} />
 
-      {projects.length === 0 ? (
-        <div style={{ ...css.card, textAlign: "center", padding: 60 }}>
-          <p style={{ fontSize: 40, marginBottom: 12 }}>&#127912;</p>
-          <p style={{ color: "#888", marginBottom: 20 }}>No style projects yet</p>
-          <button style={{ ...css.btn, ...css.btnPrimary }} onClick={onCreate}>
-            Create Your First Style
-          </button>
+      {loading ? (
+        <div>
+          <SkeletonCard />
+          <SkeletonCard />
         </div>
-      ) : (
-        projects.map((p) => (
-          <div
-            key={p.id}
-            style={{ ...css.card, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
-            onClick={() => onSelect(p.id)}
-            onMouseEnter={(e) => (e.currentTarget.style.borderColor = "#7c3aed")}
-            onMouseLeave={(e) => (e.currentTarget.style.borderColor = "#1a1a2e")}
-          >
-            <div>
-              <h3 style={{ fontSize: 17, fontWeight: 600, marginBottom: 6 }}>{p.name}</h3>
-              <span style={{ fontSize: 13, color: "#666" }}>
-                {p.images.length} images &middot; trigger: <code style={{ color: "#c084fc" }}>{p.triggerWord}</code>
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <StatusBadge status={p.training?.status || "not_started"} />
-              <button
-                onClick={(e) => handleDeleteProject(e, p.id)}
-                title="Delete project"
-                style={{
-                  ...css.btn,
-                  ...css.btnDanger,
-                  padding: "6px 12px",
-                  fontSize: 13,
-                }}
-              >
-                Delete
-              </button>
-            </div>
+      ) : projects.length > 0 ? (
+        <div className="fade-in">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+            <h2 style={{ fontSize: 24, fontWeight: 700 }}>Your Art Styles</h2>
+            <button style={{ ...css.btn, ...css.btnPrimary }} onClick={onCreate}>
+              + New Style
+            </button>
           </div>
-        ))
-      )}
+
+          {projects.map((p) => (
+            <div
+              key={p.id}
+              className="fade-in"
+              style={{
+                ...css.card,
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                gap: 16,
+              }}
+              onClick={() => onSelect(p.id)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.borderColor = "rgba(124, 58, 237, 0.5)";
+                e.currentTarget.style.transform = "translateY(-2px)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.borderColor = "rgba(124, 58, 237, 0.15)";
+                e.currentTarget.style.transform = "translateY(0)";
+              }}
+            >
+              <div style={{ flex: 1 }}>
+                <h3 style={{ fontSize: 19, fontWeight: 700, marginBottom: 6 }}>{p.name}</h3>
+                <span style={{ fontSize: 15, color: "#888" }}>
+                  {p.images.length} reference images
+                </span>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <StatusBadge status={p.training?.status || "not_started"} />
+                <button
+                  onClick={(e) => handleDeleteProject(e, p.id)}
+                  title="Delete project"
+                  style={{
+                    ...css.btn,
+                    ...css.btnDanger,
+                    padding: "10px 18px",
+                    fontSize: 15,
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
 
 // ─── NewProject ──────────────────────────────────────
-
 function NewProject({ onCreated, onCancel }) {
   const [name, setName] = useState("");
   const [trigger, setTrigger] = useState("");
@@ -301,38 +523,45 @@ function NewProject({ onCreated, onCancel }) {
 
   const handleCreate = async () => {
     setCreating(true);
-    const project = await api.createProject(name || "Untitled Style", trigger || undefined);
+    const project = await api.createProject(name || "My Art Style", trigger || undefined);
     onCreated(project.id);
   };
 
   return (
-    <div style={css.card}>
-      <h2 style={{ ...css.sectionTitle, marginBottom: 20 }}>New Style Project</h2>
-      <div style={{ marginBottom: 16 }}>
-        <label style={css.label}>Project Name</label>
+    <div className="fade-in" style={{ ...css.card, maxWidth: 600, margin: "0 auto" }}>
+      <h2 style={{ ...css.sectionTitle, marginBottom: 8 }}>Create a New Art Style</h2>
+      <p style={{ fontSize: 15, color: "#888", marginBottom: 28 }}>
+        Give your style a name. You'll upload reference images next.
+      </p>
+      <div style={{ marginBottom: 20 }}>
+        <label style={css.label}>Style Name</label>
         <input
           style={css.input}
-          placeholder="e.g. Watercolor Landscapes, Anime Portraits..."
+          placeholder="e.g. My Ink Cartoons, Watercolor Art..."
           value={name}
           onChange={(e) => setName(e.target.value)}
           autoFocus
         />
       </div>
-      <div style={{ marginBottom: 24 }}>
-        <label style={css.label}>Trigger Word (optional)</label>
+      <div style={{ marginBottom: 28 }}>
+        <label style={css.label}>Keyword (optional)</label>
         <input
           style={css.input}
-          placeholder="e.g. WTRCLR01 (auto-generated if empty)"
+          placeholder="Auto-generated if empty"
           value={trigger}
           onChange={(e) => setTrigger(e.target.value.toUpperCase().replace(/\s/g, "_"))}
         />
-        <p style={{ fontSize: 12, color: "#555", marginTop: 6 }}>
-          A unique word used in prompts to activate your style. Should not be a real word.
+        <p style={{ fontSize: 13, color: "#555", marginTop: 8 }}>
+          A special word the AI uses to activate your style. Leave empty for automatic.
         </p>
       </div>
       <div style={{ display: "flex", gap: 12 }}>
-        <button style={{ ...css.btn, ...css.btnPrimary }} onClick={handleCreate} disabled={creating}>
-          {creating ? "Creating..." : "Create Project"}
+        <button
+          style={{ ...css.btn, ...css.btnPrimary, flex: 1 }}
+          onClick={handleCreate}
+          disabled={creating}
+        >
+          {creating ? "Creating..." : "Create Style"}
         </button>
         <button style={{ ...css.btn, ...css.btnSecondary }} onClick={onCancel}>
           Cancel
@@ -343,8 +572,7 @@ function NewProject({ onCreated, onCancel }) {
 }
 
 // ─── SpeechButton (Web Speech API) ───────────────────
-
-function SpeechButton({ onResult, style: extraStyle }) {
+function SpeechButton({ onResult, large }) {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
 
@@ -377,39 +605,38 @@ function SpeechButton({ onResult, style: extraStyle }) {
 
   if (!supported) return null;
 
+  const size = large ? 64 : 52;
   return (
     <button
       onClick={toggle}
       title={listening ? "Listening... click to stop" : "Speak your description"}
       style={{
-        width: 48,
-        height: 48,
-        borderRadius: 12,
-        border: `2px solid ${listening ? "#ef4444" : "#2a2a4e"}`,
-        background: listening ? "#ef444422" : "#0a0a14",
-        color: listening ? "#ef4444" : "#888",
+        width: size,
+        height: size,
+        borderRadius: 16,
+        border: `2px solid ${listening ? "#ef4444" : "rgba(124, 58, 237, 0.3)"}`,
+        background: listening ? "rgba(239, 68, 68, 0.15)" : "rgba(124, 58, 237, 0.08)",
+        color: listening ? "#ef4444" : "#c084fc",
         cursor: "pointer",
-        fontSize: 22,
+        fontSize: large ? 28 : 24,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
         flexShrink: 0,
         transition: "all 0.2s",
         animation: listening ? "pulse 1.2s infinite" : "none",
-        ...extraStyle,
       }}
     >
-      {listening ? "\u23F9" : "\uD83C\uDF99"}
+      {listening ? "⏹" : "🎙"}
     </button>
   );
 }
 
 // ─── SketchCanvas ────────────────────────────────────
-
 function SketchCanvas({ onSketchChange }) {
   const canvasRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [brushSize, setBrushSize] = useState(6);
+  const [brushSize, setBrushSize] = useState(8);
   const [brushColor, setBrushColor] = useState("#ffffff");
   const [hasDrawn, setHasDrawn] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -482,26 +709,27 @@ function SketchCanvas({ onSketchChange }) {
 
   if (!enabled) {
     return (
-      <div style={{ ...css.card, textAlign: "center", padding: "20px 24px" }}>
+      <div style={{ ...css.card, textAlign: "center", padding: "24px 28px" }}>
         <button
           onClick={() => setEnabled(true)}
           style={{
             background: "none",
-            border: "2px dashed #2a2a4e",
-            borderRadius: 14,
-            padding: "20px 30px",
+            border: "2px dashed rgba(124, 58, 237, 0.3)",
+            borderRadius: 18,
+            padding: "24px 30px",
             cursor: "pointer",
             color: "#888",
-            fontSize: 15,
+            fontSize: 16,
             fontFamily: "inherit",
             width: "100%",
             transition: "all 0.2s",
+            minHeight: 80,
           }}
         >
-          <span style={{ fontSize: 24, display: "block", marginBottom: 6 }}>&#9998;</span>
-          Add a rough sketch (optional)
-          <span style={{ display: "block", fontSize: 12, color: "#555", marginTop: 4 }}>
-            Draw a simple sketch and the AI will use it as a guide
+          <span style={{ fontSize: 28, display: "block", marginBottom: 8 }}>✏️</span>
+          Draw a rough sketch (optional)
+          <span style={{ display: "block", fontSize: 14, color: "#666", marginTop: 6 }}>
+            The AI will use your sketch as a guide
           </span>
         </button>
       </div>
@@ -512,22 +740,21 @@ function SketchCanvas({ onSketchChange }) {
 
   return (
     <div style={css.card}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <h3 style={{ fontSize: 18, fontWeight: 700, color: "#e0e0e8" }}>
           Sketch a guide (optional)
         </h3>
         <button
           onClick={() => { setEnabled(false); onSketchChange(null); }}
-          style={{ ...css.btn, ...css.btnSecondary, padding: "6px 14px", fontSize: 12 }}
+          style={{ ...css.btn, ...css.btnSecondary, padding: "10px 18px", fontSize: 14 }}
         >
-          Remove sketch
+          Remove
         </button>
       </div>
-      <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>
+      <p style={{ fontSize: 14, color: "#888", marginBottom: 14 }}>
         Draw roughly — the AI will transform it into your art style
       </p>
 
-      {/* Canvas */}
       <canvas
         ref={canvasRef}
         width={512}
@@ -536,8 +763,8 @@ function SketchCanvas({ onSketchChange }) {
           width: "100%",
           maxWidth: 512,
           aspectRatio: "1",
-          borderRadius: 12,
-          border: "2px solid #2a2a4e",
+          borderRadius: 16,
+          border: "2px solid rgba(124, 58, 237, 0.2)",
           cursor: "crosshair",
           touchAction: "none",
           display: "block",
@@ -552,19 +779,17 @@ function SketchCanvas({ onSketchChange }) {
         onTouchEnd={stopDraw}
       />
 
-      {/* Brush controls */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
-        {/* Colors */}
-        <div style={{ display: "flex", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 8 }}>
           {colors.map((c) => (
             <button
               key={c}
               onClick={() => setBrushColor(c)}
               style={{
-                width: 32,
-                height: 32,
+                width: 40,
+                height: 40,
                 borderRadius: "50%",
-                border: `3px solid ${brushColor === c ? "#7c3aed" : "#2a2a4e"}`,
+                border: `3px solid ${brushColor === c ? "#7c3aed" : "rgba(124, 58, 237, 0.2)"}`,
                 background: c,
                 cursor: "pointer",
               }}
@@ -572,18 +797,17 @@ function SketchCanvas({ onSketchChange }) {
           ))}
         </div>
 
-        {/* Brush size */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {[3, 6, 12, 20].map((s) => (
+          {[4, 8, 14, 22].map((s) => (
             <button
               key={s}
               onClick={() => setBrushSize(s)}
               style={{
-                width: 36,
-                height: 36,
-                borderRadius: 10,
-                border: `2px solid ${brushSize === s ? "#7c3aed" : "#2a2a4e"}`,
-                background: brushSize === s ? "#7c3aed22" : "transparent",
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                border: `2px solid ${brushSize === s ? "#7c3aed" : "rgba(124, 58, 237, 0.2)"}`,
+                background: brushSize === s ? "rgba(124, 58, 237, 0.15)" : "transparent",
                 cursor: "pointer",
                 display: "flex",
                 alignItems: "center",
@@ -591,8 +815,8 @@ function SketchCanvas({ onSketchChange }) {
               }}
             >
               <div style={{
-                width: Math.max(s, 4),
-                height: Math.max(s, 4),
+                width: Math.max(s, 5),
+                height: Math.max(s, 5),
                 borderRadius: "50%",
                 background: "#e0e0e8",
               }} />
@@ -600,10 +824,9 @@ function SketchCanvas({ onSketchChange }) {
           ))}
         </div>
 
-        {/* Clear */}
         <button
           onClick={clearCanvas}
-          style={{ ...css.btn, ...css.btnDanger, padding: "8px 16px", fontSize: 13 }}
+          style={{ ...css.btn, ...css.btnDanger, padding: "10px 20px", fontSize: 15 }}
         >
           Clear
         </button>
@@ -613,12 +836,11 @@ function SketchCanvas({ onSketchChange }) {
 }
 
 // ─── ProjectDetail ───────────────────────────────────
-
 function ProjectDetail({ projectId, onBack }) {
   const [project, setProject] = useState(null);
-  const [tab, setTab] = useState("upload"); // upload | train | generate
+  const [tab, setTab] = useState("upload");
   const fileRef = useRef(null);
-  const sketchRef = useRef(null); // holds sketch data URL for img2img
+  const sketchRef = useRef(null);
   const [isDragging, setIsDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [training, setTraining] = useState(false);
@@ -629,10 +851,10 @@ function ProjectDetail({ projectId, onBack }) {
   const [loraScale, setLoraScale] = useState(1.15);
   const [guidanceScale, setGuidanceScale] = useState(3.5);
   const [faceRestore, setFaceRestore] = useState(true);
-  const [colorMode, setColorMode] = useState("bw"); // "bw" or "color"
-  const [suppressText, setSuppressText] = useState(true); // suppress garbled text
-  const [faceFidelity, setFaceFidelity] = useState(0.4); // lower = stronger face fix
-  const [usePulidFace, setUsePulidFace] = useState(true); // PuLID face identity for known figures
+  const [colorMode, setColorMode] = useState("bw");
+  const [suppressText, setSuppressText] = useState(true);
+  const [faceFidelity, setFaceFidelity] = useState(0.4);
+  const [usePulidFace, setUsePulidFace] = useState(true);
   const [trainers, setTrainers] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [selectedMood, setSelectedMood] = useState(null);
@@ -641,6 +863,10 @@ function ProjectDetail({ projectId, onBack }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedTrainer, setSelectedTrainer] = useState("ostris-flux-dev");
   const [wantsRetrain, setWantsRetrain] = useState(false);
+  const [lightboxImage, setLightboxImage] = useState(null);
+
+  // Determine which generate "step" we're on
+  const genStep = !selectedTemplate ? 0 : selectedTemplate.label === "Free Write" ? (prompt.trim() ? 2 : 1) : 1;
 
   const load = useCallback(async () => {
     const p = await api.getProject(projectId);
@@ -692,9 +918,8 @@ function ProjectDetail({ projectId, onBack }) {
     setTraining(false);
   };
 
-  // Build the final prompt from template + mood + setting + extra details
   const buildPrompt = () => {
-    if (prompt.trim()) return prompt; // free-text overrides
+    if (prompt.trim()) return prompt;
     const parts = [];
     if (selectedTemplate && selectedTemplate.prompt) parts.push(selectedTemplate.prompt);
     if (selectedSetting) parts.push(selectedSetting.value);
@@ -713,7 +938,6 @@ function ProjectDetail({ projectId, onBack }) {
       const opts = { numImages, aspectRatio, loraScale, guidanceScale, faceRestore, faceFidelity, colorMode, suppressText, usePulidFace };
       if (sketchRef.current) {
         opts.sketchImage = sketchRef.current;
-        console.log("Sending sketch, data length:", sketchRef.current.length);
       }
       await api.generateImages(projectId, finalPrompt, opts);
       await load();
@@ -721,6 +945,12 @@ function ProjectDetail({ projectId, onBack }) {
       alert(err.message);
     }
     setGenerating(false);
+  };
+
+  const handleQuickGenerate = async (quickPrompt) => {
+    setPrompt(quickPrompt);
+    setSelectedTemplate(SCENE_TEMPLATES.find(t => t.label === "Free Write"));
+    // Don't auto-generate — let user see it first and hit Create
   };
 
   const handleDeleteImage = async (filename) => {
@@ -733,50 +963,64 @@ function ProjectDetail({ projectId, onBack }) {
     await load();
   };
 
-  if (!project) return <p style={{ color: "#666" }}>Loading...</p>;
+  if (!project) return (
+    <div style={{ textAlign: "center", padding: 60 }}>
+      <Spinner />
+      <p style={{ color: "#888", marginTop: 16 }}>Loading your project...</p>
+    </div>
+  );
 
   const isReady = project.training?.status === "succeeded";
   const isTraining = project.training?.status === "processing" || project.training?.status === "starting";
 
   const tabs = [
-    { id: "upload", label: `Images (${project.images.length})` },
-    { id: "train", label: "Train" },
-    { id: "generate", label: "Generate", disabled: !isReady },
+    { id: "upload", label: `📁 Images (${project.images.length})` },
+    { id: "train", label: "🧠 Train" },
+    { id: "generate", label: "🎨 Create", disabled: !isReady },
   ];
 
   return (
-    <div>
+    <div className="fade-in">
+      {lightboxImage && (
+        <Lightbox src={lightboxImage.url} alt={lightboxImage.alt} onClose={() => setLightboxImage(null)} />
+      )}
+
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28 }}>
         <button
-          style={{ ...css.btn, ...css.btnSecondary, padding: "8px 14px" }}
+          style={{ ...css.btn, ...css.btnSecondary, padding: "12px 18px", fontSize: 20 }}
           onClick={onBack}
         >
-          &larr;
+          ←
         </button>
-        <div>
-          <h2 style={{ fontSize: 22, fontWeight: 600 }}>{project.name}</h2>
-          <span style={{ fontSize: 13, color: "#666" }}>
-            trigger: <code style={{ color: "#c084fc" }}>{project.triggerWord}</code>
-          </span>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ fontSize: 24, fontWeight: 700 }}>{project.name}</h2>
         </div>
-        <div style={{ marginLeft: "auto" }}>
-          <StatusBadge status={project.training?.status || "not_started"} />
-        </div>
+        <StatusBadge status={project.training?.status || "not_started"} />
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", gap: 4, marginBottom: 24, background: "#0a0a14", borderRadius: 12, padding: 4 }}>
+      <div style={{
+        display: "flex", gap: 6, marginBottom: 28,
+        background: "rgba(10, 10, 20, 0.6)",
+        borderRadius: 16, padding: 6,
+        backdropFilter: "blur(10px)",
+      }}>
         {tabs.map((t) => (
           <button
             key={t.id}
             style={{
               ...css.btn,
               flex: 1,
-              background: tab === t.id ? "#1a1a2e" : "transparent",
+              borderRadius: 12,
+              background: tab === t.id
+                ? "linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(124, 58, 237, 0.15))"
+                : "transparent",
               color: tab === t.id ? "#c084fc" : "#666",
-              opacity: t.disabled ? 0.4 : 1,
+              opacity: t.disabled ? 0.35 : 1,
               pointerEvents: t.disabled ? "none" : "auto",
+              fontSize: 16,
+              fontWeight: 600,
             }}
             onClick={() => setTab(t.id)}
           >
@@ -785,15 +1029,12 @@ function ProjectDetail({ projectId, onBack }) {
         ))}
       </div>
 
-      {/* Upload Tab */}
+      {/* ═══ Upload Tab ═══ */}
       {tab === "upload" && (
-        <div>
+        <div className="fade-in">
           <div
             style={css.dropZone(isDragging)}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             onClick={() => fileRef.current?.click()}
@@ -806,41 +1047,49 @@ function ProjectDetail({ projectId, onBack }) {
               style={{ display: "none" }}
               onChange={(e) => handleUpload([...e.target.files])}
             />
-            <p style={{ fontSize: 36, marginBottom: 8 }}>
-              {uploading ? "..." : isDragging ? "+" : "\u2191"}
-            </p>
-            <p style={{ color: "#888", fontWeight: 500 }}>
-              {uploading ? "Uploading..." : "Drop images here or click to browse"}
-            </p>
-            <p style={{ color: "#555", fontSize: 13, marginTop: 8 }}>
-              JPG, PNG, WebP &middot; At least 10 images recommended
-            </p>
+            {uploading ? (
+              <>
+                <Spinner size={36} />
+                <p style={{ color: "#c084fc", fontWeight: 600, fontSize: 17, marginTop: 16 }}>
+                  Uploading...
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: 44, marginBottom: 12 }}>
+                  {isDragging ? "📥" : "📤"}
+                </p>
+                <p style={{ color: "#ccc", fontWeight: 600, fontSize: 17 }}>
+                  Drop images here or tap to browse
+                </p>
+                <p style={{ color: "#666", fontSize: 15, marginTop: 10 }}>
+                  JPG, PNG, WebP &middot; At least 10 images recommended
+                </p>
+              </>
+            )}
           </div>
 
           {project.images.length > 0 && (
             <>
-              <div style={{ ...css.imageGrid }}>
+              <div style={css.imageGrid}>
                 {project.images.map((img) => (
                   <div key={img.filename} style={{ position: "relative" }}>
-                    <img src={img.url} style={css.imageThumb} alt="" />
+                    <img
+                      src={img.url}
+                      style={css.imageThumb}
+                      alt=""
+                      onClick={() => setLightboxImage({ url: img.url, alt: img.filename })}
+                      onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; e.currentTarget.style.borderColor = "#7c3aed"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.borderColor = "rgba(124, 58, 237, 0.15)"; }}
+                    />
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteImage(img.filename);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); handleDeleteImage(img.filename); }}
                       style={{
-                        position: "absolute",
-                        top: 6,
-                        right: 6,
-                        width: 24,
-                        height: 24,
-                        borderRadius: "50%",
-                        border: "none",
-                        background: "#000a",
-                        color: "#f87171",
-                        cursor: "pointer",
-                        fontSize: 14,
-                        lineHeight: "24px",
+                        position: "absolute", top: 6, right: 6,
+                        width: 30, height: 30, borderRadius: "50%",
+                        border: "none", background: "rgba(0,0,0,0.7)",
+                        color: "#f87171", cursor: "pointer",
+                        fontSize: 16, lineHeight: "30px",
                       }}
                     >
                       &times;
@@ -852,47 +1101,51 @@ function ProjectDetail({ projectId, onBack }) {
               {/* Trainer selector */}
               {trainers.length > 0 && !isTraining && (!isReady || wantsRetrain) && (
                 <div style={{ marginTop: 24 }}>
-                  <label style={css.label}>Select Trainer</label>
-                  <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+                  <label style={css.label}>Choose Training Method</label>
+                  <div style={{ display: "flex", gap: 12, marginTop: 8 }}>
                     {trainers.map((t) => (
                       <div
                         key={t.id}
                         onClick={() => setSelectedTrainer(t.id)}
                         style={{
                           flex: 1,
-                          padding: "14px 16px",
-                          borderRadius: 12,
-                          border: `2px solid ${selectedTrainer === t.id ? "#7c3aed" : "#1a1a2e"}`,
-                          background: selectedTrainer === t.id ? "#7c3aed11" : "#0a0a14",
+                          padding: "18px 20px",
+                          borderRadius: 16,
+                          border: `2px solid ${selectedTrainer === t.id ? "#7c3aed" : "rgba(124, 58, 237, 0.15)"}`,
+                          background: selectedTrainer === t.id ? "rgba(124, 58, 237, 0.1)" : "rgba(10, 10, 20, 0.4)",
                           cursor: "pointer",
                           transition: "all 0.2s",
                         }}
                       >
-                        <div style={{ fontSize: 14, fontWeight: 600, color: selectedTrainer === t.id ? "#c084fc" : "#e0e0e8", marginBottom: 4 }}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: selectedTrainer === t.id ? "#c084fc" : "#e0e0e8", marginBottom: 6 }}>
                           {t.name}
                         </div>
-                        <div style={{ fontSize: 12, color: "#666" }}>{t.description}</div>
+                        <div style={{ fontSize: 14, color: "#888" }}>{t.description}</div>
                       </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              <div style={{ marginTop: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 14, color: "#888" }}>
+              <div style={{ marginTop: 20, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 16, color: "#999" }}>
                   {project.images.length} images uploaded
-                  {project.images.length < 5 && " (need at least 5 to train)"}
+                  {project.images.length < 5 && (
+                    <span style={{ color: "#f59e0b" }}> — need at least 5 to train</span>
+                  )}
                 </span>
                 <button
                   style={{
                     ...css.btn,
                     ...css.btnPrimary,
+                    padding: "16px 32px",
+                    fontSize: 17,
                     opacity: project.images.length < 5 || isTraining ? 0.4 : 1,
                   }}
                   disabled={project.images.length < 5 || isTraining}
                   onClick={handleTrain}
                 >
-                  {training ? "Starting..." : isTraining ? "Training..." : "Start Training"}
+                  {training ? "Starting..." : isTraining ? "Training..." : "🧠 Start Training"}
                 </button>
               </div>
             </>
@@ -900,18 +1153,21 @@ function ProjectDetail({ projectId, onBack }) {
         </div>
       )}
 
-      {/* Train Tab */}
+      {/* ═══ Train Tab ═══ */}
       {tab === "train" && (
-        <div style={css.card}>
+        <div className="fade-in" style={css.card}>
           {!project.training ? (
-            <div style={{ textAlign: "center", padding: 40 }}>
-              <p style={{ color: "#888", marginBottom: 16 }}>
-                Upload at least 5 images, then start training to teach the AI your style.
+            <div style={{ textAlign: "center", padding: 48 }}>
+              <p style={{ fontSize: 40, marginBottom: 16 }}>🧠</p>
+              <p style={{ color: "#999", marginBottom: 20, fontSize: 17 }}>
+                Upload at least 5 reference images, then train the AI to learn your style.
               </p>
               <button
                 style={{
                   ...css.btn,
                   ...css.btnPrimary,
+                  padding: "16px 32px",
+                  fontSize: 17,
                   opacity: project.images.length < 5 ? 0.4 : 1,
                 }}
                 disabled={project.images.length < 5}
@@ -922,11 +1178,11 @@ function ProjectDetail({ projectId, onBack }) {
             </div>
           ) : (
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
                 <h3 style={css.sectionTitle}>Training Status</h3>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
                   {project.training.trainerName && (
-                    <span style={{ ...css.badge, background: "#1a1a2e", color: "#888" }}>
+                    <span style={{ ...css.badge, background: "rgba(26, 26, 46, 0.8)", color: "#999" }}>
                       {project.training.trainerName}
                     </span>
                   )}
@@ -936,12 +1192,15 @@ function ProjectDetail({ projectId, onBack }) {
 
               {isTraining && (
                 <>
-                  <p style={{ color: "#888", marginBottom: 8 }}>
+                  <div style={{ textAlign: "center", marginBottom: 20 }}>
+                    <Spinner size={48} />
+                  </div>
+                  <p style={{ color: "#999", marginBottom: 8, fontSize: 16, textAlign: "center" }}>
                     {project.training.preprocessLog
-                      ? `Cleaning training images... ${project.training.preprocessLog}`
+                      ? `Cleaning images... ${project.training.preprocessLog}`
                       : project.training.status === "starting"
-                        ? "Preparing training data..."
-                        : "Training on Replicate's GPUs... This takes 20-30 minutes for v3."}
+                        ? "Preparing your training data..."
+                        : "Training on cloud GPUs... This usually takes 20-30 minutes."}
                   </p>
                   <div style={css.progressBar}>
                     <div style={css.progressFill(project.training.status === "starting" ? 15 : 60)} />
@@ -950,45 +1209,45 @@ function ProjectDetail({ projectId, onBack }) {
               )}
 
               {project.training.status === "succeeded" && (
-                <div>
-                  <p style={{ color: "#4ade80", marginBottom: 12 }}>
-                    Training complete! Your style model is ready to generate images.
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 48, marginBottom: 12 }}>🎉</p>
+                  <p style={{ color: "#4ade80", marginBottom: 20, fontSize: 18, fontWeight: 600 }}>
+                    Your style is ready! You can start creating artwork now.
                   </p>
-                  <div style={{ display: "flex", gap: 12 }}>
+                  <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
                     <button
-                      style={{ ...css.btn, ...css.btnPrimary }}
+                      style={{ ...css.btn, ...css.btnPrimary, padding: "16px 32px", fontSize: 18 }}
                       onClick={() => setTab("generate")}
                     >
-                      Start Generating &rarr;
+                      🎨 Start Creating →
                     </button>
                     {!wantsRetrain ? (
                       <button
-                        style={{ ...css.btn, background: "#1a1a2e", color: "#f59e0b", border: "1px solid #f59e0b33" }}
+                        style={{ ...css.btn, ...css.btnSecondary }}
                         onClick={() => { setWantsRetrain(true); setSelectedTrainer("ostris-flux-dev"); }}
                       >
-                        Retrain with v3 Settings
+                        Retrain
                       </button>
                     ) : (
                       <button
-                        style={{ ...css.btn, background: "#1a1a2e", color: "#888" }}
+                        style={{ ...css.btn, ...css.btnSecondary }}
                         onClick={() => setWantsRetrain(false)}
                       >
-                        Cancel Retrain
+                        Cancel
                       </button>
                     )}
                   </div>
                   {wantsRetrain && (
-                    <div style={{ marginTop: 16, padding: 12, background: "#0a0a14", borderRadius: 8, border: "1px solid #f59e0b33" }}>
-                      <p style={{ color: "#f59e0b", fontSize: 13, marginBottom: 8 }}>
-                        v3 fixes: lower learning rate (0.0001), rank 32, auto text-removal from training images.
-                        This preserves FLUX's face recognition for politicians.
+                    <div style={{ marginTop: 20, padding: 16, background: "rgba(245, 158, 11, 0.08)", borderRadius: 14, border: "1px solid rgba(245, 158, 11, 0.2)" }}>
+                      <p style={{ color: "#f59e0b", fontSize: 14, marginBottom: 12 }}>
+                        Retrain with improved settings for better face recognition.
                       </p>
                       <button
                         style={{ ...css.btn, ...css.btnPrimary }}
                         disabled={project.images.length < 5}
                         onClick={() => { setWantsRetrain(false); handleTrain(); }}
                       >
-                        Start v3 Training
+                        Start Retraining
                       </button>
                     </div>
                   )}
@@ -996,48 +1255,40 @@ function ProjectDetail({ projectId, onBack }) {
               )}
 
               {project.training.status === "failed" && (
-                <div>
-                  <p style={{ color: "#f87171", marginBottom: 8 }}>Training failed.</p>
+                <div style={{ textAlign: "center" }}>
+                  <p style={{ fontSize: 40, marginBottom: 12 }}>😞</p>
+                  <p style={{ color: "#f87171", marginBottom: 12, fontSize: 17 }}>Training didn't work this time.</p>
                   {project.training.error && (
-                    <pre
-                      style={{
-                        background: "#0a0a14",
-                        padding: 12,
-                        borderRadius: 8,
-                        fontSize: 12,
-                        color: "#f87171",
-                        overflow: "auto",
-                      }}
-                    >
+                    <pre style={{
+                      background: "rgba(10, 10, 20, 0.6)",
+                      padding: 16, borderRadius: 12,
+                      fontSize: 13, color: "#f87171",
+                      overflow: "auto", textAlign: "left",
+                      marginBottom: 16,
+                    }}>
                       {project.training.error}
                     </pre>
                   )}
                   <button
-                    style={{ ...css.btn, ...css.btnSecondary, marginTop: 12 }}
+                    style={{ ...css.btn, ...css.btnPrimary }}
                     onClick={handleTrain}
                   >
-                    Retry Training
+                    Try Again
                   </button>
                 </div>
               )}
 
               {project.training.logs && (
-                <details style={{ marginTop: 16 }}>
-                  <summary style={{ cursor: "pointer", color: "#666", fontSize: 13 }}>
-                    Training logs
+                <details style={{ marginTop: 20 }}>
+                  <summary style={{ cursor: "pointer", color: "#666", fontSize: 14 }}>
+                    Show training details
                   </summary>
-                  <pre
-                    style={{
-                      background: "#0a0a14",
-                      padding: 12,
-                      borderRadius: 8,
-                      fontSize: 11,
-                      color: "#888",
-                      overflow: "auto",
-                      maxHeight: 200,
-                      marginTop: 8,
-                    }}
-                  >
+                  <pre style={{
+                    background: "rgba(10, 10, 20, 0.6)",
+                    padding: 16, borderRadius: 12,
+                    fontSize: 12, color: "#888",
+                    overflow: "auto", maxHeight: 200, marginTop: 10,
+                  }}>
                     {project.training.logs}
                   </pre>
                 </details>
@@ -1047,18 +1298,56 @@ function ProjectDetail({ projectId, onBack }) {
         </div>
       )}
 
-      {/* Generate Tab */}
+      {/* ═══ Generate Tab ═══ */}
       {tab === "generate" && (
-        <div>
-          {/* Step 1: What do you want to draw? */}
+        <div className="fade-in">
+          {/* Step indicator */}
+          <StepIndicator
+            steps={["Choose Subject", "Set the Mood", "Create"]}
+            current={genStep}
+          />
+
+          {/* Quick-generate chips */}
+          <div style={{ ...css.card, paddingTop: 20, paddingBottom: 20 }}>
+            <p style={{ fontSize: 16, fontWeight: 600, color: "#999", marginBottom: 14 }}>
+              Quick create — tap a suggestion:
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+              {QUICK_PROMPTS.map((q) => (
+                <button
+                  key={q.label}
+                  onClick={() => handleQuickGenerate(q.label)}
+                  style={{
+                    padding: "14px 20px",
+                    borderRadius: 16,
+                    border: "1px solid rgba(124, 58, 237, 0.25)",
+                    background: prompt === q.label
+                      ? "rgba(124, 58, 237, 0.2)"
+                      : "rgba(124, 58, 237, 0.06)",
+                    color: prompt === q.label ? "#c084fc" : "#ccc",
+                    cursor: "pointer",
+                    fontSize: 15,
+                    fontWeight: 500,
+                    fontFamily: "inherit",
+                    transition: "all 0.2s",
+                    minHeight: 48,
+                  }}
+                >
+                  {q.icon} {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Step 1: Scene type */}
           <div style={css.card}>
-            <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, color: "#e0e0e8" }}>
+            <h3 style={{ fontSize: 22, fontWeight: 700, marginBottom: 8, color: "#e0e0e8" }}>
               What would you like to create?
             </h3>
-            <p style={{ fontSize: 14, color: "#888", marginBottom: 20 }}>
-              Pick a scene type, or choose "Free Write" to describe anything
+            <p style={{ fontSize: 16, color: "#999", marginBottom: 22 }}>
+              Pick a subject, or choose "Free Write" to describe anything
             </p>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 10, marginBottom: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12 }}>
               {SCENE_TEMPLATES.map((t) => (
                 <button
                   key={t.label}
@@ -1067,23 +1356,24 @@ function ProjectDetail({ projectId, onBack }) {
                     if (t.label !== "Free Write") setPrompt("");
                   }}
                   style={{
-                    padding: "16px 12px",
-                    borderRadius: 14,
-                    border: `2px solid ${selectedTemplate?.label === t.label ? "#7c3aed" : "#1a1a2e"}`,
-                    background: selectedTemplate?.label === t.label ? "#7c3aed22" : "#0a0a14",
+                    padding: "20px 16px",
+                    borderRadius: 18,
+                    border: `2px solid ${selectedTemplate?.label === t.label ? "#7c3aed" : "rgba(124, 58, 237, 0.15)"}`,
+                    background: selectedTemplate?.label === t.label ? "rgba(124, 58, 237, 0.15)" : "rgba(10, 10, 20, 0.4)",
                     cursor: "pointer",
                     textAlign: "center",
                     transition: "all 0.2s",
                     fontFamily: "inherit",
+                    minHeight: 100,
                   }}
                 >
-                  <div style={{ fontSize: 22, marginBottom: 6, color: selectedTemplate?.label === t.label ? "#c084fc" : "#888" }}>
+                  <div style={{ fontSize: 30, marginBottom: 8 }}>
                     {t.icon}
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: selectedTemplate?.label === t.label ? "#c084fc" : "#e0e0e8" }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: selectedTemplate?.label === t.label ? "#c084fc" : "#e0e0e8" }}>
                     {t.label}
                   </div>
-                  <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{t.desc}</div>
+                  <div style={{ fontSize: 13, color: "#888", marginTop: 6 }}>{t.desc}</div>
                 </button>
               ))}
             </div>
@@ -1091,28 +1381,29 @@ function ProjectDetail({ projectId, onBack }) {
 
           {/* Step 2: Mood & Setting */}
           {selectedTemplate && (
-            <div style={css.card}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 16, color: "#e0e0e8" }}>
-                Set the mood &amp; place
+            <div className="fade-in" style={css.card}>
+              <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 20, color: "#e0e0e8" }}>
+                Set the mood & place
               </h3>
-              <div style={{ marginBottom: 16 }}>
-                <p style={{ fontSize: 14, color: "#888", marginBottom: 10 }}>Mood (optional)</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              <div style={{ marginBottom: 20 }}>
+                <p style={{ fontSize: 16, color: "#999", marginBottom: 12 }}>Mood (optional)</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                   {MOODS.map((m) => (
                     <button
                       key={m.label}
                       onClick={() => setSelectedMood(selectedMood?.label === m.label ? null : m)}
                       style={{
-                        padding: "10px 18px",
-                        borderRadius: 20,
-                        border: `2px solid ${selectedMood?.label === m.label ? "#7c3aed" : "#2a2a4e"}`,
-                        background: selectedMood?.label === m.label ? "#7c3aed22" : "transparent",
-                        color: selectedMood?.label === m.label ? "#c084fc" : "#aaa",
+                        padding: "14px 22px",
+                        borderRadius: 24,
+                        border: `2px solid ${selectedMood?.label === m.label ? "#7c3aed" : "rgba(124, 58, 237, 0.2)"}`,
+                        background: selectedMood?.label === m.label ? "rgba(124, 58, 237, 0.15)" : "transparent",
+                        color: selectedMood?.label === m.label ? "#c084fc" : "#bbb",
                         cursor: "pointer",
-                        fontSize: 14,
+                        fontSize: 16,
                         fontWeight: 500,
                         fontFamily: "inherit",
                         transition: "all 0.2s",
+                        minHeight: 48,
                       }}
                     >
                       {m.label}
@@ -1121,23 +1412,24 @@ function ProjectDetail({ projectId, onBack }) {
                 </div>
               </div>
               <div>
-                <p style={{ fontSize: 14, color: "#888", marginBottom: 10 }}>Setting (optional)</p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <p style={{ fontSize: 16, color: "#999", marginBottom: 12 }}>Setting (optional)</p>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
                   {SETTINGS.map((s) => (
                     <button
                       key={s.label}
                       onClick={() => setSelectedSetting(selectedSetting?.label === s.label ? null : s)}
                       style={{
-                        padding: "10px 18px",
-                        borderRadius: 20,
-                        border: `2px solid ${selectedSetting?.label === s.label ? "#7c3aed" : "#2a2a4e"}`,
-                        background: selectedSetting?.label === s.label ? "#7c3aed22" : "transparent",
-                        color: selectedSetting?.label === s.label ? "#c084fc" : "#aaa",
+                        padding: "14px 22px",
+                        borderRadius: 24,
+                        border: `2px solid ${selectedSetting?.label === s.label ? "#7c3aed" : "rgba(124, 58, 237, 0.2)"}`,
+                        background: selectedSetting?.label === s.label ? "rgba(124, 58, 237, 0.15)" : "transparent",
+                        color: selectedSetting?.label === s.label ? "#c084fc" : "#bbb",
                         cursor: "pointer",
-                        fontSize: 14,
+                        fontSize: 16,
                         fontWeight: 500,
                         fontFamily: "inherit",
                         transition: "all 0.2s",
+                        minHeight: 48,
                       }}
                     >
                       {s.label}
@@ -1148,53 +1440,51 @@ function ProjectDetail({ projectId, onBack }) {
             </div>
           )}
 
-          {/* Step 3: Extra details or free write */}
+          {/* Step 3: Extra details / free write */}
           {selectedTemplate && (
-            <div style={css.card}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, marginBottom: 6, color: "#e0e0e8" }}>
+            <div className="fade-in" style={css.card}>
+              <h3 style={{ fontSize: 20, fontWeight: 700, marginBottom: 8, color: "#e0e0e8" }}>
                 {selectedTemplate.label === "Free Write" ? "Describe your image" : "Add details (optional)"}
               </h3>
-              <p style={{ fontSize: 13, color: "#666", marginBottom: 12 }}>
+              <p style={{ fontSize: 15, color: "#888", marginBottom: 14 }}>
                 {selectedTemplate.label === "Free Write"
-                  ? "Describe what you want to see — keep it simple, the AI will add your style automatically"
-                  : "Anything extra? e.g. \"wearing a red hat\", \"with a dog\", \"at sunset\""}
+                  ? "Describe what you want — keep it simple, the AI adds your style automatically"
+                  : "e.g. \"wearing a red hat\", \"with a dog\", \"at sunset\""}
               </p>
-              {selectedTemplate.label === "Free Write" ? (
-                <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                {selectedTemplate.label === "Free Write" ? (
                   <textarea
-                    style={{ ...css.textarea, fontSize: 16, minHeight: 100, flex: 1 }}
-                    placeholder="e.g. a cat sleeping on a windowsill..."
+                    style={{ ...css.textarea, fontSize: 18, flex: 1 }}
+                    placeholder="e.g. Trump at a podium giving a speech..."
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                   />
-                  <SpeechButton
-                    onResult={(text) => setPrompt((prev) => prev ? prev + " " + text : text)}
-                    style={{ marginTop: 2 }}
-                  />
-                </div>
-              ) : (
-                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                ) : (
                   <input
-                    style={{ ...css.input, fontSize: 16, padding: "14px 18px", flex: 1 }}
-                    placeholder="e.g. wearing a hat, holding flowers..."
+                    style={{ ...css.input, fontSize: 18, flex: 1 }}
+                    placeholder="wearing a hat, holding flowers..."
                     value={extraDetails}
                     onChange={(e) => setExtraDetails(e.target.value)}
                   />
-                  <SpeechButton
-                    onResult={(text) => setExtraDetails((prev) => prev ? prev + " " + text : text)}
-                  />
-                </div>
-              )}
+                )}
+                <SpeechButton
+                  large
+                  onResult={(text) => {
+                    if (selectedTemplate.label === "Free Write") {
+                      setPrompt((prev) => prev ? prev + " " + text : text);
+                    } else {
+                      setExtraDetails((prev) => prev ? prev + " " + text : text);
+                    }
+                  }}
+                />
+              </div>
             </div>
           )}
 
-          {/* Step 4: Sketch canvas */}
+          {/* Sketch canvas */}
           {selectedTemplate && (
             <SketchCanvas
-              onSketchChange={(dataUrl) => {
-                // Store sketch data URL for img2img generation
-                sketchRef.current = dataUrl;
-              }}
+              onSketchChange={(dataUrl) => { sketchRef.current = dataUrl; }}
             />
           )}
 
@@ -1202,31 +1492,37 @@ function ProjectDetail({ projectId, onBack }) {
           {selectedTemplate && (
             <div style={css.card}>
               {buildPrompt() && (
-                <div style={{ marginBottom: 16, padding: "12px 16px", background: "#0a0a14", borderRadius: 10 }}>
-                  <p style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>Your image will be:</p>
-                  <p style={{ fontSize: 15, color: "#c084fc" }}>{buildPrompt()}</p>
+                <div style={{
+                  marginBottom: 20, padding: "16px 20px",
+                  background: "rgba(124, 58, 237, 0.08)",
+                  borderRadius: 14,
+                  border: "1px solid rgba(124, 58, 237, 0.15)",
+                }}>
+                  <p style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>Your image will be:</p>
+                  <p style={{ fontSize: 17, color: "#c084fc", fontWeight: 500 }}>{buildPrompt()}</p>
                 </div>
               )}
 
-              <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              <div style={{ display: "flex", gap: 16, marginBottom: 20 }}>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>How many?</p>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <p style={{ fontSize: 15, color: "#999", marginBottom: 8 }}>How many?</p>
+                  <div style={{ display: "flex", gap: 8 }}>
                     {[1, 2, 3, 4].map((n) => (
                       <button
                         key={n}
                         onClick={() => setNumImages(n)}
                         style={{
                           flex: 1,
-                          padding: "12px 0",
-                          borderRadius: 10,
-                          border: `2px solid ${numImages === n ? "#7c3aed" : "#2a2a4e"}`,
-                          background: numImages === n ? "#7c3aed22" : "transparent",
+                          padding: "14px 0",
+                          borderRadius: 14,
+                          border: `2px solid ${numImages === n ? "#7c3aed" : "rgba(124, 58, 237, 0.15)"}`,
+                          background: numImages === n ? "rgba(124, 58, 237, 0.15)" : "transparent",
                           color: numImages === n ? "#c084fc" : "#888",
                           cursor: "pointer",
-                          fontSize: 16,
+                          fontSize: 18,
                           fontWeight: 700,
                           fontFamily: "inherit",
+                          minHeight: 52,
                         }}
                       >
                         {n}
@@ -1235,145 +1531,130 @@ function ProjectDetail({ projectId, onBack }) {
                   </div>
                 </div>
                 <div style={{ flex: 1 }}>
-                  <p style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>Shape</p>
-                  <div style={{ display: "flex", gap: 6 }}>
+                  <p style={{ fontSize: 15, color: "#999", marginBottom: 8 }}>Shape</p>
+                  <div style={{ display: "flex", gap: 8 }}>
                     {[
-                      { r: "1:1", icon: "\u25A0" },
-                      { r: "16:9", icon: "\u25AC" },
-                      { r: "9:16", icon: "\u25AE" },
-                    ].map(({ r, icon }) => (
+                      { r: "1:1", label: "Square" },
+                      { r: "16:9", label: "Wide" },
+                      { r: "9:16", label: "Tall" },
+                    ].map(({ r, label }) => (
                       <button
                         key={r}
                         onClick={() => setAspectRatio(r)}
                         style={{
                           flex: 1,
-                          padding: "12px 0",
-                          borderRadius: 10,
-                          border: `2px solid ${aspectRatio === r ? "#7c3aed" : "#2a2a4e"}`,
-                          background: aspectRatio === r ? "#7c3aed22" : "transparent",
+                          padding: "14px 0",
+                          borderRadius: 14,
+                          border: `2px solid ${aspectRatio === r ? "#7c3aed" : "rgba(124, 58, 237, 0.15)"}`,
+                          background: aspectRatio === r ? "rgba(124, 58, 237, 0.15)" : "transparent",
                           color: aspectRatio === r ? "#c084fc" : "#888",
                           cursor: "pointer",
-                          fontSize: 14,
+                          fontSize: 15,
                           fontWeight: 600,
                           fontFamily: "inherit",
+                          minHeight: 52,
                         }}
                       >
-                        {icon} {r}
+                        {label}
                       </button>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {/* Advanced Settings (collapsed) */}
-              <div style={{ marginBottom: 16 }}>
+              {/* Advanced Settings */}
+              <div style={{ marginBottom: 20 }}>
                 <button
                   onClick={() => setShowAdvanced(!showAdvanced)}
                   style={{
-                    background: "none",
-                    border: "none",
-                    color: "#666",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    padding: "4px 0",
+                    background: "none", border: "none",
+                    color: "#888", fontSize: 15, cursor: "pointer",
+                    fontFamily: "inherit", padding: "8px 0",
+                    display: "flex", alignItems: "center", gap: 8,
                   }}
                 >
-                  {showAdvanced ? "\u25BC" : "\u25B6"} Advanced settings
+                  <span style={{ transform: showAdvanced ? "rotate(90deg)" : "rotate(0)", transition: "transform 0.2s", display: "inline-block" }}>▶</span>
+                  Fine-tune settings
                 </button>
                 {showAdvanced && (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ display: "flex", gap: 24 }}>
+                  <div className="fade-in" style={{ marginTop: 16, padding: 20, background: "rgba(10, 10, 20, 0.4)", borderRadius: 16, border: "1px solid rgba(124, 58, 237, 0.1)" }}>
+                    <div style={{ display: "flex", gap: 28 }}>
                       <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>
-                          Style strength: <span style={{ color: "#c084fc" }}>{loraScale.toFixed(2)}</span>
+                        <p style={{ fontSize: 14, color: "#999", marginBottom: 8 }}>
+                          Style strength: <span style={{ color: "#c084fc", fontWeight: 600 }}>{loraScale.toFixed(2)}</span>
                         </p>
                         <input
                           type="range" min="0.5" max="2.0" step="0.05" value={loraScale}
                           onChange={(e) => setLoraScale(parseFloat(e.target.value))}
-                          style={{ width: "100%", accentColor: "#7c3aed" }}
+                          style={{ width: "100%", accentColor: "#7c3aed", height: 6 }}
                         />
                       </div>
                       <div style={{ flex: 1 }}>
-                        <p style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>
-                          Prompt adherence: <span style={{ color: "#c084fc" }}>{guidanceScale.toFixed(1)}</span>
+                        <p style={{ fontSize: 14, color: "#999", marginBottom: 8 }}>
+                          Prompt accuracy: <span style={{ color: "#c084fc", fontWeight: 600 }}>{guidanceScale.toFixed(1)}</span>
                         </p>
                         <input
                           type="range" min="2" max="10" step="0.5" value={guidanceScale}
                           onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
-                          style={{ width: "100%", accentColor: "#7c3aed" }}
+                          style={{ width: "100%", accentColor: "#7c3aed", height: 6 }}
                         />
                       </div>
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 20, marginTop: 14, flexWrap: "wrap" }}>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 24, marginTop: 18, flexWrap: "wrap" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: 44 }}>
                         <input
-                          type="checkbox"
-                          checked={faceRestore}
+                          type="checkbox" checked={faceRestore}
                           onChange={(e) => setFaceRestore(e.target.checked)}
-                          style={{ accentColor: "#7c3aed", width: 18, height: 18 }}
+                          style={{ accentColor: "#7c3aed", width: 20, height: 20 }}
                         />
-                        <span style={{ fontSize: 13, color: "#888" }}>
-                          Face restoration (cleaner faces, adds ~10s)
-                        </span>
+                        <span style={{ fontSize: 14, color: "#999" }}>Fix faces (cleaner, +10s)</span>
                       </label>
-                      <div style={{ display: "flex", gap: 6 }}>
-                        {[
-                          { id: "bw", label: "B&W" },
-                          { id: "color", label: "Color" },
-                        ].map((m) => (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {[{ id: "bw", label: "B&W" }, { id: "color", label: "Color" }].map((m) => (
                           <button
                             key={m.id}
                             onClick={() => setColorMode(m.id)}
                             style={{
-                              padding: "6px 14px",
-                              borderRadius: 8,
-                              border: `2px solid ${colorMode === m.id ? "#7c3aed" : "#2a2a4e"}`,
-                              background: colorMode === m.id ? "#7c3aed22" : "transparent",
-                              color: colorMode === m.id ? "#c084fc" : "#666",
-                              cursor: "pointer",
-                              fontSize: 13,
-                              fontWeight: 600,
-                              fontFamily: "inherit",
+                              padding: "10px 18px",
+                              borderRadius: 12,
+                              border: `2px solid ${colorMode === m.id ? "#7c3aed" : "rgba(124, 58, 237, 0.15)"}`,
+                              background: colorMode === m.id ? "rgba(124, 58, 237, 0.15)" : "transparent",
+                              color: colorMode === m.id ? "#c084fc" : "#888",
+                              cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "inherit",
+                              minHeight: 44,
                             }}
                           >
                             {m.label}
                           </button>
                         ))}
                       </div>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: 44 }}>
                         <input
-                          type="checkbox"
-                          checked={suppressText}
+                          type="checkbox" checked={suppressText}
                           onChange={(e) => setSuppressText(e.target.checked)}
-                          style={{ accentColor: "#7c3aed", width: 18, height: 18 }}
+                          style={{ accentColor: "#7c3aed", width: 20, height: 20 }}
                         />
-                        <span style={{ fontSize: 13, color: "#888" }}>
-                          No text in image (avoids garbled speech bubbles)
-                        </span>
+                        <span style={{ fontSize: 14, color: "#999" }}>No text in image</span>
                       </label>
-                      <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+                      <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", minHeight: 44 }}>
                         <input
-                          type="checkbox"
-                          checked={usePulidFace}
+                          type="checkbox" checked={usePulidFace}
                           onChange={(e) => setUsePulidFace(e.target.checked)}
-                          style={{ accentColor: "#f59e0b", width: 18, height: 18 }}
+                          style={{ accentColor: "#f59e0b", width: 20, height: 20 }}
                         />
-                        <span style={{ fontSize: 13, color: "#888" }}>
-                          Face ID (multi-LoRA for recognizable politicians)
-                        </span>
+                        <span style={{ fontSize: 14, color: "#999" }}>Recognizable faces (politicians)</span>
                       </label>
                     </div>
                     {faceRestore && (
-                      <div style={{ marginTop: 14 }}>
-                        <p style={{ fontSize: 13, color: "#888", marginBottom: 6 }}>
-                          Face fix strength: <span style={{ color: "#4ade80" }}>{faceFidelity.toFixed(2)}</span>
-                          <span style={{ color: "#555", marginLeft: 8 }}>(lower = stronger fix)</span>
+                      <div style={{ marginTop: 16 }}>
+                        <p style={{ fontSize: 14, color: "#999", marginBottom: 8 }}>
+                          Face fix strength: <span style={{ color: "#4ade80", fontWeight: 600 }}>{faceFidelity.toFixed(2)}</span>
+                          <span style={{ color: "#666", marginLeft: 10 }}>(lower = stronger)</span>
                         </p>
                         <input
                           type="range" min="0.1" max="0.9" step="0.05" value={faceFidelity}
                           onChange={(e) => setFaceFidelity(parseFloat(e.target.value))}
-                          style={{ width: "100%", maxWidth: 300, accentColor: "#4ade80" }}
+                          style={{ width: "100%", maxWidth: 300, accentColor: "#4ade80", height: 6 }}
                         />
                       </div>
                     )}
@@ -1381,99 +1662,89 @@ function ProjectDetail({ projectId, onBack }) {
                 )}
               </div>
 
+              {/* Generate button */}
               <button
                 style={{
                   ...css.btn,
                   ...css.btnPrimary,
                   width: "100%",
-                  padding: "18px 20px",
-                  fontSize: 18,
+                  padding: "22px 24px",
+                  fontSize: 20,
                   fontWeight: 700,
+                  borderRadius: 18,
                   opacity: !canGenerate || generating ? 0.5 : 1,
+                  position: "relative",
+                  overflow: "hidden",
                 }}
                 onClick={handleGenerate}
                 disabled={!canGenerate || generating}
               >
-                {generating ? "Creating your artwork..." : "Create in My Style"}
+                {generating ? (
+                  <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+                    <Spinner size={24} color="#fff" />
+                    Creating your artwork...
+                  </span>
+                ) : (
+                  "🎨 Create in My Style"
+                )}
               </button>
             </div>
           )}
 
           {/* Generated images */}
           {project.generations.length > 0 && (
-            <div>
-              <h3 style={{ fontSize: 20, fontWeight: 700, marginTop: 32, marginBottom: 16, color: "#e0e0e8" }}>
+            <div className="fade-in">
+              <h3 style={{ fontSize: 22, fontWeight: 700, marginTop: 36, marginBottom: 20, color: "#e0e0e8" }}>
                 Your Artwork ({project.generations.length})
               </h3>
               <div style={css.genGrid}>
                 {[...project.generations].reverse().map((g) => (
-                  <div key={g.id} style={{ ...css.card, position: "relative" }}>
+                  <div key={g.id} style={{ ...css.card, position: "relative", padding: 0, overflow: "hidden" }}>
                     <button
                       onClick={() => handleDeleteGeneration(g.id)}
                       style={{
-                        position: "absolute",
-                        top: 12,
-                        right: 12,
-                        width: 28,
-                        height: 28,
-                        borderRadius: "50%",
-                        border: "none",
-                        background: "#000a",
-                        color: "#f87171",
-                        cursor: "pointer",
-                        fontSize: 16,
-                        lineHeight: "28px",
-                        zIndex: 1,
+                        position: "absolute", top: 12, right: 12,
+                        width: 36, height: 36, borderRadius: "50%",
+                        border: "none", background: "rgba(0,0,0,0.7)",
+                        color: "#f87171", cursor: "pointer",
+                        fontSize: 18, lineHeight: "36px", zIndex: 1,
                       }}
                     >
                       &times;
                     </button>
-                    <img src={g.url} style={css.genImage} alt={g.prompt} />
-                    <p style={{ fontSize: 13, color: "#888", marginTop: 10 }}>{g.prompt}</p>
-                    {g.params && (
-                      <div style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 6,
-                        marginTop: 8,
-                      }}>
-                        <span style={{ ...css.badge, background: "#1a1a2e", color: "#c084fc", fontSize: 11 }}>
-                          LoRA {g.params.loraScale}
-                        </span>
-                        <span style={{ ...css.badge, background: "#1a1a2e", color: "#38bdf8", fontSize: 11 }}>
-                          Guidance {g.params.guidanceScale}
-                        </span>
-                        <span style={{ ...css.badge, background: "#1a1a2e", color: "#888", fontSize: 11 }}>
-                          {g.params.aspectRatio}
-                        </span>
-                        {g.params.faceRestore && (
-                          <span style={{ ...css.badge, background: "#052e16", color: "#4ade80", fontSize: 11 }}>
-                            Face Fix {g.params.faceFidelity != null ? g.params.faceFidelity : ""}
+                    <img
+                      src={g.url}
+                      style={{ ...css.genImage, borderRadius: "20px 20px 0 0", border: "none" }}
+                      alt={g.prompt}
+                      onClick={() => setLightboxImage({ url: g.url, alt: g.prompt })}
+                      onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.02)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+                    />
+                    <div style={{ padding: "16px 20px" }}>
+                      <p style={{ fontSize: 15, color: "#999" }}>{g.prompt}</p>
+                      {g.params && (
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                          <span style={{ ...css.badge, background: "rgba(124, 58, 237, 0.1)", color: "#c084fc", fontSize: 11 }}>
+                            Style {g.params.loraScale}
                           </span>
-                        )}
-                        {g.params.multiLora && (
-                          <span style={{ ...css.badge, background: "#1c1917", color: "#f59e0b", fontSize: 11 }}>
-                            Multi-LoRA
-                          </span>
-                        )}
-                        {g.params.colorMode && (
-                          <span style={{ ...css.badge, background: g.params.colorMode === "bw" ? "#1a1a2e" : "#1a1a2e", color: g.params.colorMode === "bw" ? "#e0e0e8" : "#facc15", fontSize: 11 }}>
-                            {g.params.colorMode === "bw" ? "B&W" : "Color"}
-                          </span>
-                        )}
-                        <span style={{ ...css.badge, background: "#1a1a2e", color: "#888", fontSize: 11 }}>
-                          {g.params.steps} steps
-                        </span>
-                      </div>
-                    )}
-                    <a
-                      href={g.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 13, color: "#7c3aed", textDecoration: "none", marginTop: 6, display: "inline-block" }}
-                    >
-                      Open full size
-                    </a>
+                          {g.params.faceRestore && (
+                            <span style={{ ...css.badge, background: "rgba(74, 222, 128, 0.1)", color: "#4ade80", fontSize: 11 }}>
+                              Face Fix
+                            </span>
+                          )}
+                          {g.params.multiLora && (
+                            <span style={{ ...css.badge, background: "rgba(245, 158, 11, 0.1)", color: "#f59e0b", fontSize: 11 }}>
+                              Known Face
+                            </span>
+                          )}
+                          {g.params.colorMode && (
+                            <span style={{ ...css.badge, background: "rgba(26, 26, 46, 0.8)", color: g.params.colorMode === "bw" ? "#e0e0e8" : "#facc15", fontSize: 11 }}>
+                              {g.params.colorMode === "bw" ? "B&W" : "Color"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1486,9 +1757,8 @@ function ProjectDetail({ projectId, onBack }) {
 }
 
 // ─── App ─────────────────────────────────────────────
-
 export default function App() {
-  const [view, setView] = useState("list"); // list | new | project
+  const [view, setView] = useState("list");
   const [activeProject, setActiveProject] = useState(null);
 
   return (
@@ -1498,51 +1768,36 @@ export default function App() {
         <div style={css.header}>
           <div
             style={css.logo}
-            onClick={() => {
-              setView("list");
-              setActiveProject(null);
-            }}
+            onClick={() => { setView("list"); setActiveProject(null); }}
           >
             ArtVoice
           </div>
           {view !== "list" && (
             <button
-              style={{ ...css.btn, ...css.btnSecondary, fontSize: 13 }}
-              onClick={() => {
-                setView("list");
-                setActiveProject(null);
-              }}
+              style={{ ...css.btn, ...css.btnSecondary }}
+              onClick={() => { setView("list"); setActiveProject(null); }}
             >
-              All Projects
+              ← Home
             </button>
           )}
         </div>
 
         {view === "list" && (
           <ProjectList
-            onSelect={(id) => {
-              setActiveProject(id);
-              setView("project");
-            }}
+            onSelect={(id) => { setActiveProject(id); setView("project"); }}
             onCreate={() => setView("new")}
           />
         )}
         {view === "new" && (
           <NewProject
-            onCreated={(id) => {
-              setActiveProject(id);
-              setView("project");
-            }}
+            onCreated={(id) => { setActiveProject(id); setView("project"); }}
             onCancel={() => setView("list")}
           />
         )}
         {view === "project" && activeProject && (
           <ProjectDetail
             projectId={activeProject}
-            onBack={() => {
-              setView("list");
-              setActiveProject(null);
-            }}
+            onBack={() => { setView("list"); setActiveProject(null); }}
           />
         )}
       </div>

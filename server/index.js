@@ -19,6 +19,12 @@ app.use(cors());
 app.use(express.json({ limit: "20mb" })); // larger limit for sketch canvas base64
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+// In production, serve the built frontend
+const distPath = path.join(__dirname, "../dist");
+if (fs.existsSync(distPath)) {
+  app.use(express.static(distPath));
+}
+
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
 // Multer for image uploads
@@ -662,6 +668,13 @@ app.post("/api/projects/:projectId/generate", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// In production, serve frontend for all non-API routes (SPA fallback)
+if (fs.existsSync(distPath)) {
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(distPath, "index.html"));
+  });
+}
 
 app.listen(PORT, () => {
   console.log(`ArtVoice server running at http://localhost:${PORT}`);
