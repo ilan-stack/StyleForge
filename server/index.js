@@ -50,29 +50,40 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB per file
 });
 
-// In-memory project store (persisted to JSON)
+// In-memory project store — single source of truth, persisted to JSON
 const DB_PATH = path.join(__dirname, "../projects.json");
+let _projectsCache = null;
 
 function loadProjects() {
+  if (_projectsCache) return _projectsCache;
   if (fs.existsSync(DB_PATH)) {
     try {
       const raw = fs.readFileSync(DB_PATH, "utf-8");
-      if (!raw.trim()) return {};
-      return JSON.parse(raw);
+      if (!raw.trim()) { _projectsCache = {}; return _projectsCache; }
+      _projectsCache = JSON.parse(raw);
+      return _projectsCache;
     } catch (err) {
       console.error("projects.json corrupted, backing up and starting fresh:", err.message);
       try { fs.renameSync(DB_PATH, DB_PATH + ".corrupted." + Date.now()); } catch {}
-      return {};
+      _projectsCache = {};
+      return _projectsCache;
     }
   }
-  return {};
+  _projectsCache = {};
+  return _projectsCache;
 }
 
 function saveProjects(projects) {
-  // Write to temp file first, then rename (atomic write to prevent corruption)
-  const tmpPath = DB_PATH + ".tmp";
-  fs.writeFileSync(tmpPath, JSON.stringify(projects, null, 2));
-  fs.renameSync(tmpPath, DB_PATH);
+  // Update in-memory cache
+  _projectsCache = projects;
+  // Atomic write: temp file then rename
+  try {
+    const tmpPath = DB_PATH + ".tmp";
+    fs.writeFileSync(tmpPath, JSON.stringify(projects, null, 2));
+    fs.renameSync(tmpPath, DB_PATH);
+  } catch (err) {
+    console.error("Failed to save projects.json:", err.message);
+  }
 }
 
 // ─── Routes ──────────────────────────────────────────
