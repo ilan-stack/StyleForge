@@ -1,4 +1,4 @@
-# StyleForge
+# ArtVoice
 
 An accessible web app for creating editorial political cartoons in a custom ink style. Built for people with Parkinson's, Alzheimer's, and other disabilities — designed to be maximally automated so users can type a simple prompt like "Trump at podium" and get a recognizable caricature.
 

@@ -1503,7 +1503,7 @@ export default function App() {
               setActiveProject(null);
             }}
           >
-            StyleForge
+            ArtVoice
           </div>
           {view !== "list" && (
             <button

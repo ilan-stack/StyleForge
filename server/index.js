@@ -293,12 +293,12 @@ app.post("/api/projects/:projectId/train", async (req, res) => {
 
       // Create model on Replicate
       const modelOwner = "sett";
-      const modelName = `style-forge-${project.id.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}`;
+      const modelName = `artvoice-${project.id.replace(/[^a-z0-9-]/gi, "-").toLowerCase()}`;
       try {
         await replicate.models.create(modelOwner, modelName, {
           visibility: "private",
           hardware: "gpu-t4",
-          description: `StyleForge: ${project.name}`,
+          description: `ArtVoice: ${project.name}`,
         });
       } catch (e) {
         if (!e.message?.includes("already exists")) throw e;
@@ -664,5 +664,5 @@ app.post("/api/projects/:projectId/generate", async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`StyleForge server running at http://localhost:${PORT}`);
+  console.log(`ArtVoice server running at http://localhost:${PORT}`);
 });
