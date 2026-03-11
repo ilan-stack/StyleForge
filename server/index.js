@@ -55,13 +55,24 @@ const DB_PATH = path.join(__dirname, "../projects.json");
 
 function loadProjects() {
   if (fs.existsSync(DB_PATH)) {
-    return JSON.parse(fs.readFileSync(DB_PATH, "utf-8"));
+    try {
+      const raw = fs.readFileSync(DB_PATH, "utf-8");
+      if (!raw.trim()) return {};
+      return JSON.parse(raw);
+    } catch (err) {
+      console.error("projects.json corrupted, backing up and starting fresh:", err.message);
+      try { fs.renameSync(DB_PATH, DB_PATH + ".corrupted." + Date.now()); } catch {}
+      return {};
+    }
   }
   return {};
 }
 
 function saveProjects(projects) {
-  fs.writeFileSync(DB_PATH, JSON.stringify(projects, null, 2));
+  // Write to temp file first, then rename (atomic write to prevent corruption)
+  const tmpPath = DB_PATH + ".tmp";
+  fs.writeFileSync(tmpPath, JSON.stringify(projects, null, 2));
+  fs.renameSync(tmpPath, DB_PATH);
 }
 
 // ─── Routes ──────────────────────────────────────────
